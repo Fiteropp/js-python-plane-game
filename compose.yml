@@ -1,0 +1,50 @@
+services:
+  db:
+    image: mariadb:11
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpassword}
+      MARIADB_DATABASE: ${DB_NAME:-myapp}
+      MARIADB_USER: ${DB_USER:-dev}
+      MARIADB_PASSWORD: ${DB_PASSWORD:-devpassword}
+    ports:
+      - "${DB_HOST_PORT:-3307}:3306" # 3307 so it does not conflict with local dbs
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - ./backend/db:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      start_period: 10s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build: .
+    # Overrides Gunicorn in Dockerfile so local dev gets auto-reload
+    command: python backend/app.py
+    ports:
+      - "5000:5000"
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306 #port inside Docker
+      DB_NAME: ${DB_NAME:-myapp}
+      DB_USER: ${DB_USER:-dev}
+      DB_PASSWORD: ${DB_PASSWORD:-devpassword}
+    volumes:
+      # Live-reloads local edits without rebuilding the image
+      - ./backend:/app/backend
+      - ./frontend:/app/frontend
+    depends_on:
+      db:
+        condition: service_healthy
+
+  adminer:
+    image: adminer
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  mariadb_data:

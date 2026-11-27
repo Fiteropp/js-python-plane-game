@@ -1,13 +1,38 @@
+import os
+
+import pymysql
+from dotenv import load_dotenv
 from flask import Flask, jsonify
 
-# We will probably use gunicorn library on deployment!
+load_dotenv()
+
 app = Flask(__name__, static_folder="../frontend", static_url_path="")
+
+def get_db():
+    return pymysql.connect(
+        host=os.getenv("DB_HOST", "127.0.0.1"),
+        port=int(os.getenv("DB_PORT", 3306)),
+        user=os.getenv("DB_USER", "dev"),
+        password=os.getenv("DB_PASSWORD", "devpassword"),
+        database=os.getenv("DB_NAME", "myapp"),
+        cursorclass=pymysql.cursors.DictCursor,
+    )
 
 @app.get("/")
 def index():
     return app.send_static_file("index.html")
 
-#health check endpoint, can be pinged to check if the backend is online
 @app.get("/api/health")
 def health():
-    return jsonify({"status": "ok"})
+    try:
+        conn = get_db()
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1")
+        conn.close()
+        return jsonify({"status": "ok", "database": "connected"})
+    except Exception as e:
+        return jsonify({"status": "error", "detail": str(e)}), 503
+
+if __name__ == "__main__":
+    # host="0.0.0.0" is required so Flask is reachable outside the Docker container
+    app.run(host="0.0.0.0", port=5000, debug=True)
